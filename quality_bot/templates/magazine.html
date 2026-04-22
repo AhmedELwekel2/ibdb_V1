@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="magazine.css">
+</head>
+
+<body>
+
+    <!-- Cover Page -->
+    <div class="cover-page" style="background-image: url('{{ cover_image_path }}');
+                                background-size: cover;
+                                background-position: center;">
+
+
+        <!-- Push content down so it doesn't touch logo -->
+        <!-- Cover content removed by request -->
+        <!-- <div class="cover-content" style="padding-top: 200px;">
+            <div class="cover-title">{{ title }}</div>
+            <div class="cover-subtitle">{{ subtitle }}</div>
+            <div class="cover-date">{{ date }}</div>
+        </div> -->
+
+    </div>
+
+
+
+
+    <!-- Table of Contents Removed -->
+
+    <!-- Editor's Note -->
+    <div class="editors-note" id="editors-note">
+        <div class="section-header">
+            <span class="section-title">Editor's Perspective</span>
+        </div>
+        <div class="article-content" style="column-count: 1;">
+            {{ editors_note | safe }}
+        </div>
+        <div style="margin-top: 1cm; font-family: 'Inter', sans-serif; font-weight: bold;">
+            — Transformix AI Bot
+        </div>
+    </div>
+
+    <!-- Articles Loop -->
+    {% for article in articles %}
+    <div class="article-page">
+        <div class="article-header">
+            <span class="article-category">{{ article.category | upper }}</span>
+            <a id="article-{{ loop.index }}" style="text-decoration: none; color: inherit;">
+                <h1 class="article-title">{{ article.title }}</h1>
+            </a>
+            <div class="article-meta">
+                Source: {{ article.source }} | Intelligence Score: {{ article.score }}/10
+            </div>
+        </div>
+
+        {% if article.local_image_path %}
+        <div class="featured-image-container" style="background-color: transparent;">
+            <img src="{{ article.local_image_path }}"
+                style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;">
+        </div>
+        {% elif article.image_url %}
+        <!-- Placeholder for future real images if we fetch them -->
+        <div class="featured-image-container">
+            <span class="featured-image-text">AI Analysis Visualization</span>
+        </div>
+        {% else %}
+        <div class="featured-image-container">
+            <span class="featured-image-text">AI Analysis Visualization</span>
+        </div>
+        {% endif %}
+
+        <div class="article-content">
+            <div class="article-lead">
+                {{ article.lead }}
+            </div>
+            {{ article.content | safe }}
+        </div>
+    </div>
+    {% endfor %}
+
+    <!-- Market Watch Section Removed -->
+
+    <!-- Back Cover Page -->
+    {% if back_cover_path %}
+    <div class="cover-page"
+        style="background-image: url('{{ back_cover_path }}'); background-size: cover; background-position: center;">
+        <!-- Minimal content for back cover -->
+        <div class="cover-content"
+            style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%; padding-bottom: 3cm;">
+            <div class="magazine-brand" style="text-align: center; margin-bottom: 0;">
+                {% if logo_path %}
+                <img src="{{ logo_path }}" alt="Logo"
+                    style="height: 100px; display: block; margin: 0 auto 20px auto; opacity: 0.9;">
+                {% endif %}
+                <div style="font-size: 14pt; color: white; opacity: 0.8; font-family: 'Inter', sans-serif;">
+                    www.transformix.ai</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Footer moved inside Market Watch to save pages -->
+</body>
+
+</body>
+
+</html>

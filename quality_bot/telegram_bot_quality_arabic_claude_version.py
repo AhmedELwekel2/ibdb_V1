@@ -998,7 +998,7 @@ async def get_news(update: Update, context: ContextTypes.DEFAULT_TYPE, page=1, c
         gnews_articles = fetch_gnews_quality() or []
         rss_articles = fetch_rss_quality() or []
         try:
-            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=50)
+            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=10)
         except Exception as e:
             logger.warning(f"Custom scrapers failed: {e}")
             custom_articles = []
@@ -1033,7 +1033,7 @@ async def get_news(update: Update, context: ContextTypes.DEFAULT_TYPE, page=1, c
         enhanced_newsapi = enhance_articles_with_content(recent_newsapi, max_articles=50) or []
         enhanced_gnews = enhance_articles_with_content(recent_gnews, max_articles=50) or []
         enhanced_rss = enhance_articles_with_content(recent_rss, max_articles=50) or []
-        enhanced_custom = enhance_articles_with_content(recent_custom, max_articles=50) or []
+        enhanced_custom = enhance_articles_with_content(recent_custom, max_articles=10) or []
         all_enhanced_articles = enhanced_newsapi + enhanced_gnews + enhanced_rss + enhanced_custom
         
         with open("all_enhanced_quality_articles.txt", "w", encoding="utf-8") as f:
@@ -2554,7 +2554,7 @@ async def generate_weekly_blogs(update: Update, context: ContextTypes.DEFAULT_TY
         gnews_articles = [] # fetch_gnews_quality() or []
         rss_articles = fetch_rss_quality() or []
         try:
-            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=50)
+            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=10)
         except Exception as e:
             logger.warning(f"Custom scrapers failed: {e}")
             custom_articles = []
@@ -2767,7 +2767,7 @@ async def generate_monthly_blogs(update: Update, context: ContextTypes.DEFAULT_T
         gnews_articles = [] # fetch_gnews_quality() or []
         rss_articles = fetch_rss_quality() or []
         try:
-            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=50)
+            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=10)
         except Exception as e:
             logger.warning(f"Custom scrapers failed: {e}")
             custom_articles = []

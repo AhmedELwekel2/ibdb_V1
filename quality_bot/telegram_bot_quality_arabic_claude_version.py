@@ -998,7 +998,7 @@ async def get_news(update: Update, context: ContextTypes.DEFAULT_TYPE, page=1, c
         gnews_articles = fetch_gnews_quality() or []
         rss_articles = fetch_rss_quality() or []
         try:
-            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=10)
+            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=15)
         except Exception as e:
             logger.warning(f"Custom scrapers failed: {e}")
             custom_articles = []
@@ -2554,7 +2554,7 @@ async def generate_weekly_blogs(update: Update, context: ContextTypes.DEFAULT_TY
         gnews_articles = [] # fetch_gnews_quality() or []
         rss_articles = fetch_rss_quality() or []
         try:
-            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=10)
+            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=15)
         except Exception as e:
             logger.warning(f"Custom scrapers failed: {e}")
             custom_articles = []
@@ -2767,7 +2767,7 @@ async def generate_monthly_blogs(update: Update, context: ContextTypes.DEFAULT_T
         gnews_articles = [] # fetch_gnews_quality() or []
         rss_articles = fetch_rss_quality() or []
         try:
-            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=10)
+            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=15)
         except Exception as e:
             logger.warning(f"Custom scrapers failed: {e}")
             custom_articles = []
@@ -3316,7 +3316,7 @@ async def generate_magazine(update: Update, context: ContextTypes.DEFAULT_TYPE):
         gnews_articles = [] # fetch_gnews_quality() or []
         rss_articles = fetch_rss_quality() or []
         try:
-            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=10)
+            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=15)
         except Exception as e:
             logger.warning(f"Custom scrapers failed: {e}")
             custom_articles = []

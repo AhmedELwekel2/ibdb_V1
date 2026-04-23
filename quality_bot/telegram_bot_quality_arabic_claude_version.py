@@ -586,8 +586,8 @@ def fetch_rss_quality():
                             logger.warning(f"   ⚠️ URL not found (404), trying next URL...")
                             continue
                         elif response.status_code == 403:
-                            logger.warning(f"   ⚠️ Forbidden (403), trying next URL...")
-                            continue
+                            logger.warning(f"   ⚠️ Forbidden (403), trying direct parse fallback...")
+                            # Don't continue - fall through to Method 2 (direct feedparser)
                         else:
                             logger.warning(f"   ⚠️ Failed to fetch via requests: {response.status_code}")
                             # Fall through to direct parse

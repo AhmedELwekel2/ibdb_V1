@@ -282,7 +282,9 @@ RSS_FEEDS = [
     {
         "name": "Training Industry",
         "urls": [
-            "https://trainingindustry.com/feed/"  # Primary
+            "https://trainingindustry.com/feed/",  # Primary
+            "https://feeds.feedburner.com/trainingindustry",  # Fallback 1: FeedBurner proxy
+            "https://rsshub.app/trainingindustry/articles"  # Fallback 2: RSSHub proxy
         ]
     },
     {

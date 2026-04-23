@@ -10,28 +10,26 @@
 <body>
 
     <!-- Cover Page -->
-    <div class="cover-page" style="background-image: url('{{ cover_image_path }}');
-                                background-size: cover;
-                                background-position: center;">
-
-
-        <!-- Push content down so it doesn't touch logo -->
-        <!-- Cover content removed by request -->
-        <!-- <div class="cover-content" style="padding-top: 200px;">
-            <div class="cover-title">{{ title }}</div>
-            <div class="cover-subtitle">{{ subtitle }}</div>
-            <div class="cover-date">{{ date }}</div>
-        </div> -->
-
+    <div class="cover-page" {% if cover_image_path %}style="background-image: url('{{ cover_image_path }}'); background-size: cover; background-position: center;"{% else %}style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);"{% endif %}>
+        <div class="cover-content-center">
+            {% if logo_path %}
+            <img src="{{ logo_path }}" alt="IBDL" class="cover-logo">
+            {% endif %}
+            <div class="cover-title-main">{{ title or 'IBDL Monthly Report' }}</div>
+            {% if subtitle %}
+            <div class="cover-subtitle-main">{{ subtitle }}</div>
+            {% endif %}
+            <div class="cover-date-main">{{ date }}</div>
+        </div>
     </div>
-
-
-
-
-    <!-- Table of Contents Removed -->
 
     <!-- Editor's Note -->
     <div class="editors-note" id="editors-note">
+        {% if logo_path %}
+        <div class="page-logo">
+            <img src="{{ logo_path }}" alt="IBDL" class="page-logo-img">
+        </div>
+        {% endif %}
         <div class="section-header">
             <span class="section-title">Editor's Perspective</span>
         </div>
@@ -39,13 +37,18 @@
             {{ editors_note | safe }}
         </div>
         <div style="margin-top: 1cm; font-family: 'Inter', sans-serif; font-weight: bold;">
-            — Transformix AI Bot
+            — IBDL AI Bot
         </div>
     </div>
 
     <!-- Articles Loop -->
     {% for article in articles %}
     <div class="article-page">
+        {% if logo_path %}
+        <div class="page-logo">
+            <img src="{{ logo_path }}" alt="IBDL" class="page-logo-img">
+        </div>
+        {% endif %}
         <div class="article-header">
             <span class="article-category">{{ article.category | upper }}</span>
             <a id="article-{{ loop.index }}" style="text-decoration: none; color: inherit;">
@@ -56,19 +59,21 @@
             </div>
         </div>
 
-        {% if article.local_image_path %}
+        {% if article.image_url %}
+        <div class="featured-image-container" style="background-color: transparent;">
+            <img src="{{ article.image_url }}"
+                style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;">
+        </div>
+        {% elif article.local_image_path %}
         <div class="featured-image-container" style="background-color: transparent;">
             <img src="{{ article.local_image_path }}"
                 style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;">
         </div>
-        {% elif article.image_url %}
-        <!-- Placeholder for future real images if we fetch them -->
-        <div class="featured-image-container">
-            <span class="featured-image-text">AI Analysis Visualization</span>
-        </div>
         {% else %}
-        <div class="featured-image-container">
-            <span class="featured-image-text">AI Analysis Visualization</span>
+        <div class="featured-image-container featured-image-fallback">
+            {% if logo_path %}
+            <img src="{{ logo_path }}" alt="IBDL" class="featured-fallback-logo">
+            {% endif %}
         </div>
         {% endif %}
 
@@ -81,13 +86,10 @@
     </div>
     {% endfor %}
 
-    <!-- Market Watch Section Removed -->
-
     <!-- Back Cover Page -->
     {% if back_cover_path %}
     <div class="cover-page"
         style="background-image: url('{{ back_cover_path }}'); background-size: cover; background-position: center;">
-        <!-- Minimal content for back cover -->
         <div class="cover-content"
             style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%; padding-bottom: 3cm;">
             <div class="magazine-brand" style="text-align: center; margin-bottom: 0;">
@@ -95,15 +97,21 @@
                 <img src="{{ logo_path }}" alt="Logo"
                     style="height: 100px; display: block; margin: 0 auto 20px auto; opacity: 0.9;">
                 {% endif %}
-                <div style="font-size: 14pt; color: white; opacity: 0.8; font-family: 'Inter', sans-serif;">
-                    www.transformix.ai</div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="cover-page" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
+        <div class="cover-content-center">
+            {% if logo_path %}
+            <img src="{{ logo_path }}" alt="IBDL" class="cover-logo" style="opacity: 0.9;">
+            {% endif %}
+            <div style="font-size: 14pt; color: white; opacity: 0.7; font-family: 'Inter', sans-serif; margin-top: 30px;">
+                Thank you for reading
             </div>
         </div>
     </div>
     {% endif %}
-
-    <!-- Footer moved inside Market Watch to save pages -->
-</body>
 
 </body>
 

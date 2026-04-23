@@ -25,9 +25,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Install Playwright browsers (chromium) for custom scrapers
+RUN playwright install --with-deps chromium
+
 # Optional: ensure NLTK data is available at build time
 RUN python -c "import nltk; nltk.download('punkt')"
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "telegram_bot_quality_arabic.py"]
+CMD ["python", "telegram_bot_quality_arabic_claude_version.py"]

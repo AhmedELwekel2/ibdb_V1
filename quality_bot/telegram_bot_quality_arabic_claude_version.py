@@ -9,7 +9,7 @@ import logging
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor
 import os
@@ -888,16 +888,16 @@ def enhance_articles_with_content(articles, max_articles=15, weekly_mode=False, 
     
     enhanced_articles = []
     
-    # Adjust for weekly vs daily processing
+    # Hard caps — prevent runaway content extraction
     if weekly_mode:
         max_articles = min(max_articles, 50)
-        delay = 0.3
+        delay = 0.2
     elif monthly_mode:
-        max_articles = min(max_articles, 100)
-        delay = 0.5
+        max_articles = min(max_articles, 50)
+        delay = 0.2
     else:
-        max_articles = min(max_articles, 20)
-        delay = 0.5
+        max_articles = min(max_articles, 10)
+        delay = 0.2
     
     logger.info(f"Starting content extraction for {min(len(articles), max_articles)} articles")
     
@@ -996,23 +996,31 @@ async def get_news(update: Update, context: ContextTypes.DEFAULT_TYPE, page=1, c
         gnews_articles = fetch_gnews_quality() or []
         rss_articles = fetch_rss_quality() or []
         try:
-            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=10)
+            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=50)
         except Exception as e:
             logger.warning(f"Custom scrapers failed: {e}")
             custom_articles = []
+
         logger.info(f"Fetched {len(newsapi_articles)} NewsAPI, {len(gnews_articles)} GNews, {len(rss_articles)} RSS and {len(custom_articles)} custom scraper articles.")
-        
         # Filter relevant articles
         filtered_newsapi = filter_relevant_articles(newsapi_articles) or []
         filtered_gnews = filter_relevant_articles(gnews_articles) or []
         filtered_rss = filter_relevant_articles(rss_articles) or []
         filtered_custom = filter_relevant_articles(custom_articles) or []
-        
-        # Daily scope: restrict to past 2 days
-        recent_newsapi = filter_recent_articles(filtered_newsapi, days=2) or []
-        recent_gnews = filter_recent_articles(filtered_gnews, days=2) or []
-        recent_rss = filter_recent_articles(filtered_rss, days=2) or []
-        recent_custom = filter_recent_articles(filtered_custom, days=2) or []
+
+        # Recency filter with fallback
+        recent_newsapi = filter_recent_articles(filtered_newsapi, days=60) or []
+        recent_gnews = filter_recent_articles(filtered_gnews, days=60) or []
+        recent_rss = filter_recent_articles(filtered_rss, days=60) or []
+        recent_custom = filter_recent_articles(filtered_custom, days=60) or []
+
+        # Fallback: if nothing within 60 days, use the most relevant filtered articles
+        if not (recent_newsapi or recent_gnews or recent_rss or recent_custom):
+            logger.warning("No articles within 60 days — falling back to filtered articles regardless of date")
+            recent_newsapi = filtered_newsapi[:20]
+            recent_gnews = filtered_gnews[:20]
+            recent_rss = filtered_rss[:20]
+            recent_custom = filtered_custom[:20]
         
         await message.edit_text(
             "🌍 *الخطوة 2/3:* استخراج المحتوى الكامل للمقالات للتحليل...\n📖 قد يستغرق هذا من 30 إلى 60 ثانية...",
@@ -1020,8 +1028,8 @@ async def get_news(update: Update, context: ContextTypes.DEFAULT_TYPE, page=1, c
         )
         
         # Enhance articles with full content (daily)
-        enhanced_newsapi = enhance_articles_with_content(recent_newsapi, max_articles=20) or []
-        enhanced_gnews = enhance_articles_with_content(recent_gnews, max_articles=20) or []
+        enhanced_newsapi = enhance_articles_with_content(recent_newsapi, max_articles=50) or []
+        enhanced_gnews = enhance_articles_with_content(recent_gnews, max_articles=50) or []
         enhanced_rss = enhance_articles_with_content(recent_rss, max_articles=50) or []
         enhanced_custom = enhance_articles_with_content(recent_custom, max_articles=50) or []
         all_enhanced_articles = enhanced_newsapi + enhanced_gnews + enhanced_rss + enhanced_custom
@@ -1628,48 +1636,281 @@ def categorize_articles_for_blogs(articles):
     }
 
 def parse_blog_sections(blog_content):
-    """Parse blog content and return structured sections"""
+    """Parse blog content and return structured sections, preserving paragraph breaks."""
     if not blog_content:
         logger.warning("No blog content provided to parse_blog_sections")
         return []
-    
+
     sections = []
     current_section = {"title": "", "content": "", "level": 0}
-    
+
     lines = blog_content.split('\n')
-    
+
     for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-            
-        # Check for headers
-        if line.startswith('#'):
-            # Save previous section if it has content
+        stripped = line.strip()
+
+        if stripped.startswith('#'):
             if current_section["content"].strip():
                 sections.append(current_section.copy())
-            
-            # Start new section
-            level = len(line) - len(line.lstrip('#'))
-            title = line.lstrip('#').strip()
-            
-            current_section = {
-                "title": title,
-                "content": "",
-                "level": level
-            }
+            level = len(stripped) - len(stripped.lstrip('#'))
+            title = stripped.lstrip('#').strip()
+            current_section = {"title": title, "content": "", "level": level}
+        elif not stripped:
+            # Preserve paragraph break
+            current_section["content"] += "\n\n"
         else:
-            # Add to current section content
-            current_section["content"] += line + " "
-    
-    # Don't forget the last section
+            current_section["content"] += stripped + " "
+
     if current_section["content"].strip():
         sections.append(current_section)
-    
+
     return sections
 
+
+def strip_markdown(text):
+    """Remove Markdown syntax for clean PDF rendering."""
+    import re
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    text = re.sub(r'__(.+?)__', r'\1', text)
+    text = re.sub(r'_(.+?)_', r'\1', text)
+    text = re.sub(r'^---+$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^===+$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^[\-\*]\s+', '• ', text, flags=re.MULTILINE)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
+def _escape_html(text):
+    return (text.replace('&', '&amp;')
+                .replace('<', '&lt;')
+                .replace('>', '&gt;'))
+
+
+def _inline_markdown(text):
+    """Convert inline Markdown (bold, italic) to HTML inside an already-escaped string."""
+    import re
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
+    text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', text)
+    text = re.sub(r'(?<!_)_(?!_)(.+?)(?<!_)_(?!_)', r'<em>\1</em>', text)
+    return text
+
+
+def extract_og_image(url, timeout=5):
+    """Extract Open Graph (or twitter / first article) image URL from a webpage."""
+    if not url or not url.startswith('http'):
+        return None
+    try:
+        import urllib3
+        urllib3.disable_warnings()
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml',
+        }
+        resp = requests.get(url, headers=headers, timeout=timeout, verify=False, allow_redirects=True)
+        if resp.status_code != 200:
+            return None
+        soup = BeautifulSoup(resp.content, 'html.parser')
+        for sel in [
+            ('meta', {'property': 'og:image'}),
+            ('meta', {'property': 'og:image:url'}),
+            ('meta', {'name': 'twitter:image'}),
+            ('meta', {'name': 'twitter:image:src'}),
+        ]:
+            tag = soup.find(*sel[:1], **{'attrs': sel[1]})
+            if tag and tag.get('content'):
+                img = tag['content']
+                if img.startswith('//'):
+                    img = 'https:' + img
+                if img.startswith('http'):
+                    return img
+        # Last resort: first big article image
+        for img in soup.find_all('img', src=True):
+            src = img['src']
+            if src.startswith('//'):
+                src = 'https:' + src
+            if src.startswith('http') and not any(x in src.lower() for x in ['logo', 'icon', 'avatar', 'sprite', 'pixel']):
+                return src
+    except Exception as e:
+        logger.debug(f"og:image extraction failed for {url}: {e}")
+    return None
+
+
+def fetch_images_for_articles(articles, max_articles=15, timeout=5):
+    """Fetch og:images for a batch of source articles in parallel."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    images = []
+    urls = [a.get('url') for a in articles[:max_articles] if a and a.get('url')]
+    if not urls:
+        return images
+    logger.info(f"Fetching og:images for {len(urls)} source articles (parallel)...")
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        future_to_url = {executor.submit(extract_og_image, url, timeout): url for url in urls}
+        try:
+            for future in as_completed(future_to_url, timeout=timeout * 3):
+                try:
+                    img = future.result(timeout=timeout)
+                    if img:
+                        images.append(img)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"Image fetching wait timed out: {e}")
+    logger.info(f"Got {len(images)} valid og:images out of {len(urls)} URLs")
+    return images
+
+
+def strip_seo_preamble(text):
+    """Remove SEO metadata block (English labels) the AI prepends before the actual Arabic content."""
+    if not text:
+        return text
+    import re
+    seo_markers = [
+        'SEO Title', 'Meta Description', 'Recommended Slug', 'Headings Structure',
+        'Slug:', 'Meta:', 'Title:', 'العناصر الإلزامية', 'SEO العناصر',
+    ]
+    lines = text.split('\n')
+    # Find first horizontal rule
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s in ('---', '***', '___') or (len(s) >= 3 and set(s) <= {'-', '=', '*', '_'}):
+            preamble = '\n'.join(lines[:i])
+            if any(m in preamble for m in seo_markers):
+                logger.info(f"Stripped SEO preamble ({i} lines)")
+                return '\n'.join(lines[i+1:]).lstrip()
+            break
+    # Fallback: remove leading lines that are SEO-labeled
+    cleaned = []
+    skipping = True
+    for line in lines:
+        s = line.strip()
+        if skipping:
+            if not s:
+                continue
+            # Skip lines that are SEO metadata or English-labeled bullet/header
+            if any(m in s for m in seo_markers):
+                continue
+            if s.startswith('#') and any(m in s for m in seo_markers):
+                continue
+            # Skip "H1:", "H2:" outline lines
+            if re.match(r'^[\-\*•]\s*H[1-6]\s*:', s):
+                continue
+            skipping = False
+        cleaned.append(line)
+    return '\n'.join(cleaned).lstrip()
+
+
+def remove_english_lines(text):
+    """Remove lines that are predominantly English (more than 60% Latin characters)."""
+    if not text:
+        return text
+    out = []
+    for line in text.split('\n'):
+        stripped = line.strip()
+        if not stripped:
+            out.append(line)
+            continue
+        # Strip markdown chars first
+        plain = ''.join(c for c in stripped if c.isalpha())
+        if not plain:
+            out.append(line)
+            continue
+        latin = sum(1 for c in plain if c.isascii() and c.isalpha())
+        ratio = latin / len(plain)
+        # If >60% Latin and the line has at least 4 Latin chars, drop it
+        if ratio > 0.6 and latin >= 4:
+            logger.debug(f"Dropping English line: {stripped[:60]}")
+            continue
+        out.append(line)
+    return '\n'.join(out)
+
+
+def markdown_to_html(text):
+    """Convert blog Markdown to safe HTML for WeasyPrint rendering."""
+    if not text:
+        return ""
+    out = []
+    in_list = False
+    in_olist = False
+
+    def close_lists():
+        nonlocal in_list, in_olist
+        if in_list:
+            out.append('</ul>')
+            in_list = False
+        if in_olist:
+            out.append('</ol>')
+            in_olist = False
+
+    for raw in text.split('\n'):
+        line = raw.rstrip()
+        stripped = line.strip()
+
+        if not stripped:
+            close_lists()
+            continue
+
+        # Horizontal rules
+        if stripped in ('---', '***', '___') or (len(stripped) >= 3 and set(stripped) <= {'-', '=', '*', '_'}):
+            close_lists()
+            out.append('<hr>')
+            continue
+
+        # Headers
+        if stripped.startswith('#'):
+            close_lists()
+            level = len(stripped) - len(stripped.lstrip('#'))
+            level = min(max(level, 1), 4)
+            content = stripped.lstrip('#').strip()
+            content = _inline_markdown(_escape_html(content))
+            out.append(f'<h{level}>{content}</h{level}>')
+            continue
+
+        # Numbered list
+        import re
+        num_match = re.match(r'^(\d+)[\.\)]\s+(.+)$', stripped)
+        if num_match:
+            if in_list:
+                out.append('</ul>')
+                in_list = False
+            if not in_olist:
+                out.append('<ol>')
+                in_olist = True
+            item = _inline_markdown(_escape_html(num_match.group(2)))
+            out.append(f'<li>{item}</li>')
+            continue
+
+        # Bullet list
+        if stripped.startswith(('- ', '* ', '• ', '+ ')):
+            if in_olist:
+                out.append('</ol>')
+                in_olist = False
+            if not in_list:
+                out.append('<ul>')
+                in_list = True
+            item = _inline_markdown(_escape_html(stripped[2:].strip()))
+            out.append(f'<li>{item}</li>')
+            continue
+
+        # Blockquote
+        if stripped.startswith('> '):
+            close_lists()
+            content = _inline_markdown(_escape_html(stripped[2:].strip()))
+            out.append(f'<blockquote>{content}</blockquote>')
+            continue
+
+        # Regular paragraph
+        close_lists()
+        content = _inline_markdown(_escape_html(stripped))
+        out.append(f'<p>{content}</p>')
+
+    close_lists()
+    return '\n'.join(out)
+
+
 def process_arabic_text(text):
-    """Reshape and reorder Arabic text for correct display in PDF"""
+    """Reshape and reorder Arabic text for correct display in PDF."""
     if not text:
         return ""
     reshaped_text = arabic_reshaper.reshape(text)
@@ -1677,22 +1918,78 @@ def process_arabic_text(text):
     return bidi_text
 
 def create_quality_blog_pdf(blog_content, blog_title, is_temp_file=True):
-    """Create a beautifully formatted quality and excellence blog-style PDF"""
-    
+    """Render blog PDF via WeasyPrint — proper Arabic + mixed-language support."""
     if not blog_content or not blog_title:
         logger.warning("No blog content or title provided to create_quality_blog_pdf")
         return None
-    
+
+    if not WEASYPRINT_AVAILABLE:
+        logger.error("WeasyPrint not available — cannot generate blog PDF")
+        return None
+
     if is_temp_file:
-        # Create a temporary file for Telegram bot
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
         filename = temp_file.name
         temp_file.close()
     else:
-        # Create with specific filename for standalone use
         filename = f"{blog_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
-    
-    doc = SimpleDocTemplate(filename, pagesize=A4, 
+
+    try:
+        import pathlib as _pathlib
+        template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
+
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        if 'يومي' in blog_title:
+            meta_text = f"تقرير يومي • {date_str}"
+        elif 'أسبوعي' in blog_title:
+            meta_text = f"تقرير أسبوعي • {date_str}"
+        elif 'شهري' in blog_title:
+            meta_text = f"تقرير شهري • {date_str}"
+        else:
+            meta_text = f"تقرير • {date_str}"
+
+        logo_path_fs = os.path.join(template_dir, 'images', 'logo.png')
+        logo_uri = _pathlib.Path(logo_path_fs).as_uri() if os.path.exists(logo_path_fs) else None
+
+        cleaned = strip_seo_preamble(blog_content)
+        cleaned = remove_english_lines(cleaned)
+        content_html = markdown_to_html(cleaned)
+
+        env = Environment(loader=FileSystemLoader(template_dir))
+        template = env.get_template('blog.html')
+        html_out = template.render(
+            title=blog_title,
+            meta_text=meta_text,
+            content_html=content_html,
+            logo_path=logo_uri,
+        )
+
+        css_path = os.path.join(template_dir, 'blog.css')
+        HTML(string=html_out, base_url=template_dir).write_pdf(
+            filename,
+            stylesheets=[CSS(css_path)]
+        )
+        logger.info(f"Successfully created blog PDF via WeasyPrint: {filename}")
+        return filename
+    except Exception as e:
+        logger.error(f"Error creating blog PDF via WeasyPrint: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+
+def _create_quality_blog_pdf_DEPRECATED_REPORTLAB(blog_content, blog_title, is_temp_file=True):
+    """Old ReportLab implementation kept for reference; not used."""
+    if not blog_content or not blog_title:
+        return None
+    if is_temp_file:
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        filename = temp_file.name
+        temp_file.close()
+    else:
+        filename = f"{blog_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
+
+    doc = SimpleDocTemplate(filename, pagesize=A4,
                           topMargin=0.75*inch, bottomMargin=0.75*inch,
                           leftMargin=0.75*inch, rightMargin=0.75*inch)
     
@@ -1723,39 +2020,47 @@ def create_quality_blog_pdf(blog_content, blog_title, is_temp_file=True):
         fontName='Amiri'
     )
     
-    # Section header style (H2) - use Normal parent to avoid bold font lookup
+    # Section header style (H2)
     section_header_style = ParagraphStyle(
         'SectionHeader',
         parent=styles['Normal'],
         fontSize=18,
         spaceAfter=12,
         spaceBefore=24,
+        alignment=TA_RIGHT,
         textColor=HexColor('#2c3e50'),
-        fontName='Amiri'
+        fontName='Amiri',
+        leading=26,
+        borderPad=4,
+        borderWidth=0,
+        borderColor=HexColor('#2c3e50'),
     )
-    
-    # Subsection header style (H3) - use Normal parent to avoid bold font lookup
+
+    # Subsection header style (H3)
     subsection_header_style = ParagraphStyle(
         'SubsectionHeader',
         parent=styles['Normal'],
         fontSize=14,
         spaceAfter=8,
         spaceBefore=16,
+        alignment=TA_RIGHT,
         textColor=HexColor('#34495e'),
-        fontName='Amiri'
+        fontName='Amiri',
+        leading=22,
     )
-    
-    # Blog paragraph style
+
+    # Blog paragraph style — TA_RIGHT required for bidi-processed Arabic
     blog_paragraph_style = ParagraphStyle(
         'BlogParagraph',
         parent=styles['Normal'],
         fontSize=12,
-        spaceAfter=12,
+        spaceAfter=10,
         spaceBefore=0,
-        alignment=TA_JUSTIFY,
-        leading=18,
-        textColor=HexColor('#333333'),
-        fontName='Amiri'
+        alignment=TA_RIGHT,
+        leading=22,
+        textColor=HexColor('#222222'),
+        fontName='Amiri',
+        wordWrap='RTL',
     )
     
     # Build the document content
@@ -1823,16 +2128,13 @@ def create_quality_blog_pdf(blog_content, blog_title, is_temp_file=True):
             if title:
                 content.append(Paragraph(process_arabic_text(title), subsection_header_style))
         
-        # Add section content
+        # Add section content — split by paragraph breaks, not by sentence
         if section_content:
-            # Split into paragraphs
-            paragraphs = section_content.split('. ')
-            for para in paragraphs:
-                para = para.strip()
-                if para and len(para) > 20:
-                    # Close the sentence if not ending with punctuation
-                    if not para.endswith('.'):
-                        para += '.'
+            import re
+            raw_paragraphs = re.split(r'\n\n+', section_content)
+            for para in raw_paragraphs:
+                para = strip_markdown(para.replace('\n', ' ').strip())
+                if para and len(para) > 10:
                     content.append(Paragraph(process_arabic_text(para), blog_paragraph_style))
     
     # Build the PDF
@@ -2250,17 +2552,16 @@ async def generate_weekly_blogs(update: Update, context: ContextTypes.DEFAULT_TY
         gnews_articles = [] # fetch_gnews_quality() or []
         rss_articles = fetch_rss_quality() or []
         try:
-            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=10)
+            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=50)
         except Exception as e:
             logger.warning(f"Custom scrapers failed: {e}")
             custom_articles = []
         logger.info(f"Fetched {len(newsapi_articles)} NewsAPI, {len(gnews_articles)} GNews, {len(rss_articles)} RSS and {len(custom_articles)} custom scraper articles.")
-        
         await message.edit_text(
-            "📝 *Step 2/4:* Filtering relevant articles...\n🔍 Applying quality and excellence-specific filters...",
+            "📝 *الخطوة 2/4:* فلترة المقالات ذات الصلة...\n🔍 يتم الآن تطبيق فلاتر الاستراتيجية والقيادة والتعلم والتطوير...",
             parse_mode='Markdown'
         )
-        
+
         filtered_newsapi = filter_relevant_articles(newsapi_articles) or []
         filtered_gnews = filter_relevant_articles(gnews_articles) or []
         filtered_rss = filter_relevant_articles(rss_articles) or []
@@ -2269,8 +2570,15 @@ async def generate_weekly_blogs(update: Update, context: ContextTypes.DEFAULT_TY
         recent_gnews = filter_recent_articles(filtered_gnews, days=7) or []
         recent_rss = filter_recent_articles(filtered_rss, days=7) or []
         recent_custom = filter_recent_articles(filtered_custom, days=7) or []
-       
-        all_articles = recent_newsapi + recent_gnews + recent_rss+ recent_custom
+
+        all_articles = recent_newsapi + recent_gnews + recent_rss + recent_custom
+
+        # Fallback: if recency filter returned nothing, use the filtered articles directly
+        if not all_articles:
+            logger.warning("No articles within 60 days — falling back to filtered articles regardless of date")
+            all_articles = (filtered_newsapi[:5] + filtered_gnews[:5] +
+                            filtered_rss[:25] + filtered_custom[:5])
+
         logger.info(f"Total relevant articles: {len(all_articles)}")
         
         if not all_articles:
@@ -2457,17 +2765,17 @@ async def generate_monthly_blogs(update: Update, context: ContextTypes.DEFAULT_T
         gnews_articles = [] # fetch_gnews_quality() or []
         rss_articles = fetch_rss_quality() or []
         try:
-            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=100)
+            custom_articles = await fetch_all_custom_scrapers(max_articles_per_source=50)
         except Exception as e:
             logger.warning(f"Custom scrapers failed: {e}")
             custom_articles = []
         logger.info(f"Fetched {len(newsapi_articles)} NewsAPI, {len(gnews_articles)} GNews, {len(rss_articles)} RSS and {len(custom_articles)} custom scraper articles.")
-        
+
         await message.edit_text(
-            "📝 *Step 2/4:* Filtering relevant articles...\n🔍 Applying quality and excellence-specific filters...",
+            "📝 *الخطوة 2/4:* فلترة المقالات ذات الصلة...\n🔍 يتم الآن تطبيق فلاتر الاستراتيجية والقيادة والتعلم والتطوير...",
             parse_mode='Markdown'
         )
-        
+
         filtered_newsapi = filter_relevant_articles(newsapi_articles) or []
         filtered_gnews = filter_relevant_articles(gnews_articles) or []
         filtered_rss = filter_relevant_articles(rss_articles) or []
@@ -2476,8 +2784,15 @@ async def generate_monthly_blogs(update: Update, context: ContextTypes.DEFAULT_T
         recent_gnews = filter_recent_articles(filtered_gnews, days=30) or []
         recent_rss = filter_recent_articles(filtered_rss, days=30) or []
         recent_custom = filter_recent_articles(filtered_custom, days=30) or []
-       
+
         all_articles = recent_newsapi + recent_gnews + recent_rss + recent_custom
+
+        # Fallback: if recency filter returned nothing, use the filtered articles directly
+        if not all_articles:
+            logger.warning("No articles within 60 days — falling back to filtered articles regardless of date")
+            all_articles = (filtered_newsapi[:5] + filtered_gnews[:5] +
+                            filtered_rss[:25] + filtered_custom[:5])
+
         logger.info(f"Total relevant articles: {len(all_articles)}")
         
         if not all_articles:
@@ -3016,6 +3331,14 @@ async def generate_magazine(update: Update, context: ContextTypes.DEFAULT_TYPE):
         recent_custom = filter_recent_articles(filtered_custom, days=30) or []
 
         all_articles = clean_deduplicate_articles(recent_newsapi + recent_gnews + recent_rss + recent_custom)
+
+        # Fallback: if recency filter returned nothing, use the filtered articles directly
+        if not all_articles:
+            logger.warning("Magazine: No articles within 60 days — falling back to filtered articles regardless of date")
+            all_articles = clean_deduplicate_articles(
+                filtered_newsapi[:5] + filtered_gnews[:5] + filtered_rss[:25] + filtered_custom[:5]
+            )
+
         logger.info(f"Magazine: Total relevant articles after filtering: {len(all_articles)}")
 
         if not all_articles:
@@ -3024,7 +3347,7 @@ async def generate_magazine(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Enhance top articles
         await message.edit_text("🎨 *المرحلة 2/3:* تنقية وتحسين المحتوى...", parse_mode='Markdown')
-        enhanced_articles = enhance_articles_with_content(all_articles, max_articles=40, monthly_mode=True)
+        enhanced_articles = enhance_articles_with_content(all_articles, max_articles=12, monthly_mode=True)
         enhanced_count = len([a for a in enhanced_articles if a.get('full_content')])
         logger.info(f"Magazine: Enhanced articles: {enhanced_count}/{len(enhanced_articles)}")
 
@@ -3045,9 +3368,19 @@ async def generate_magazine(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if 'location' not in article or not article['location']:
                 article['location'] = 'Global'
 
+        # Fetch og:images from source article URLs and assign round-robin to magazine articles
+        await message.edit_text("🎨 *المرحلة 3/3:* جلب الصور وتصميم PDF...", parse_mode='Markdown')
+        try:
+            source_images = fetch_images_for_articles(enhanced_articles, max_articles=20, timeout=4)
+            if source_images and magazine_data.get('articles'):
+                for i, article in enumerate(magazine_data['articles']):
+                    article['image_url'] = source_images[i % len(source_images)]
+                logger.info(f"Assigned {len(source_images)} images across {len(magazine_data['articles'])} magazine articles")
+        except Exception as e:
+            logger.warning(f"Image assignment failed: {e}")
+
         # 3. Render PDF using NEW MAGAZINE template
-        filename = f"Corporate_LD_{datetime.now().strftime('%B_%Y')}.pdf"
-        # SWITCHED from render_newspaper_pdf to render_magazine_pdf
+        filename = f"IBDL_Monthly_{datetime.now().strftime('%B_%Y')}.pdf"
         pdf_path = render_magazine_pdf(magazine_data, filename)
         
         if pdf_path and os.path.exists(pdf_path):
